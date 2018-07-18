@@ -1,11 +1,22 @@
+//#define USEPOPCNT
 #include <string>
-#include <intrin.h>
 #include <fstream>
 #include <vector>
 #include <array>
 #include <utility>
-
+#include <iostream>
+#ifdef USEPOPCNT
+#include <intrin.h>
+#else
+#include <bitset>
+unsigned __popcnt(const unsigned data)
+{
+	std::bitset<32> b(data);
+	return b.count();
+}
+#endif
 #define MAX_KEYSIZE 40
+
 
 static const std::string base64_chars =
 "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -101,10 +112,11 @@ std::vector<char> base64_decode(std::string const& encoded_string) {
 typedef struct string_score
 {
 	string_score(std::string& en, std::string& de, const int sc, const char k) : decoded_str(de), encoded_str(en), score(sc), key(k) {}
+	string_score(std::string& de, const int sc, const char k) : decoded_str(de), score(sc), key(k) {}
 	string_score()
 	{
 		decoded_str = encoded_str = "";
-		score = 0;
+		score = INT_MIN;
 		key = 0;
 	}
 	std::string decoded_str = "";
@@ -129,9 +141,45 @@ string_score score_string(std::string& decoded, std::string& encoded, const char
 	return string_score(encoded, decoded, score, key);
 }
 
+string_score score_string(std::string& decoded, const char key)
+{
+	auto score = 0;
+	for (auto chr : decoded)
+	{
+		chr = tolower(chr);
+		if (chr == ' ')
+			score += 5;
+		else if (chr == 'a' || chr == 'e' || chr == 'i' || chr == 'o' || chr == 'u')
+			score += 5;
+		else
+			--score;
+	}
+	return string_score(decoded, score, key);
+}
+
+string_score break_single_character_xor(std::vector<char> data)
+{
+	// key pair score.
+	string_score keypairscore;
+	for (unsigned int i = 0; i <= UCHAR_MAX; i++)
+	{
+		std::string decoded;
+		for (auto j : data)
+		{
+			decoded += static_cast<char>(j ^ i);
+		}
+		const auto current_scored_str = score_string(decoded, i);
+		if (current_scored_str.score > keypairscore.score)
+		{
+			keypairscore = current_scored_str;
+		}
+	}
+	return keypairscore;
+}
 
 int main()
 {
+	std::cout << compute_hamming_distance("this is a test", "wokka wokka!!!") << std::endl;
 	std::ifstream f_h("6.txt", std::ifstream::in);
 	std::string line;
 	std::vector<char> data;
@@ -143,34 +191,46 @@ int main()
 
 	// First element is the key size, second element is the normalized hamming distance
 	std::array<std::pair<unsigned, unsigned>, 3> keysizes = { std::make_pair(0, UINT_MAX), std::make_pair(0, UINT_MAX) , std::make_pair(0, UINT_MAX) };
-	unsigned empty = 0;
 
 	for (auto i = 2; i < MAX_KEYSIZE; i++)
 	{
 		const auto dist = compute_hamming_distance(&data[0], &data[i], i) / i;
 		for (auto& keysize : keysizes)
 		{
-			if (dist < keysize.second && empty < 3)
-			{
-				// Do nothing, just continue on to the next iteration to get the array filled out.
-			} else if (dist < keysize.second)
+			if (dist < keysize.second)
 			{
 				keysize.first = i;
 				keysize.second = dist;
-				++empty;
 				break;
 			}
 		}
 	}
 
-	for (const auto & pair : keysizes)
+	// Store each matching key character in the same buffer
+	for (const auto & keysize : keysizes)
 	{
-		std::vector<std::pair<string_score, std::vector<char>>> transposed(pair.first);
+		if (keysize.first == 0)
+			continue;
+		std::vector<std::pair<string_score, std::vector<char>>> transposed(keysize.first);
 		for (unsigned i = 0; i < data.size(); ++i)
-			transposed[i % pair.first].second.push_back(data[i]);
+			transposed[i % keysize.first].second.push_back(data[i]);
+
+		std::string key;
+
+		for(auto & block : transposed)
+		{
+			block.first = break_single_character_xor(block.second);
+			key += block.first.key;
+		}
+
+		std::cout << "Guess:" << std::endl;
+		std::cout << "Key guess:" << std::endl << key << std::endl;
+		std::cout << "Decrypted:" << std::endl;
+		for (unsigned i = 0; i < data.size(); ++i)
+			std::cout << transposed[i % keysize.first].first.decoded_str[i / keysize.first];
+
+		std::cout << std::endl << std::endl;
 	}
-
-
 
 	system("pause");
 	return 0;
