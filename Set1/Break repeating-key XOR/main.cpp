@@ -16,6 +16,7 @@ unsigned __popcnt(const unsigned data)
 }
 #endif
 #define MAX_KEYSIZE 40
+#define BLOCKS_TO_CHECK 5
 
 static const std::string base64_chars =
 "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -162,6 +163,7 @@ unsigned intpow(const unsigned base, const unsigned x)
 
 int main()
 {
+	std::cout << compute_hamming_distance("this is a test", "wokka wokka!!!", 14) << std::endl;
 	std::ifstream f_h("6.txt", std::ios::in);
 	std::string line;
 	std::vector<char> data;
@@ -170,23 +172,28 @@ int main()
 		auto decoded_line = base64_decode(line);
 		data.insert(data.end(), decoded_line.begin(), decoded_line.end());
 	}
-
+	
 	// First: Key size.
 	// Second: Normalized hamming distance.
-	std::array<std::pair<unsigned, unsigned>, 3> keysizes = { std::make_pair(0, UINT_MAX), std::make_pair(0, UINT_MAX) , std::make_pair(0, UINT_MAX) };
+	// Take top 3 key sizes and proceed
+	std::array<std::pair<unsigned, float>, 3> keysizes;
+	for (auto & keysize : keysizes)
+		keysize = std::make_pair(0, UINT_MAX);
 
 	for (unsigned i = 2; i < MAX_KEYSIZE; i++)
 	{
-		// Key size larger than data doesn't make sense because then it wouldn't repeat.
-		if (data.size() < i)
-			continue;
-		const auto dist = compute_hamming_distance(&data[0], &data[i], i) / i;
+		auto avg = 0.f;
+		for (unsigned j = 0; j < BLOCKS_TO_CHECK; ++j)
+		{
+			avg += static_cast<float>(compute_hamming_distance(&data[i * j], &data[i * (j + 1)], i)) / static_cast<float>(i);
+		}
+		avg /= BLOCKS_TO_CHECK;
 		for (auto& keysize : keysizes)
 		{
-			if (dist < keysize.second)
+			if (avg < keysize.second)
 			{
 				keysize.first = i;
-				keysize.second = dist;
+				keysize.second = avg;
 				break;
 			}
 		}
@@ -194,6 +201,8 @@ int main()
 
 	for (const auto & keysize : keysizes)
 	{
+		if (keysize.first == 0)
+			continue;
 		// Put each key's character in its own block
 		std::vector<std::vector<char>> blocks(keysize.first);
 		for (unsigned i = 0; i < data.size(); ++i)
@@ -217,7 +226,7 @@ int main()
 		{
 			std::cout << decoded_block.key;
 		}
-		std::cout << "'" << std::endl;
+		std::cout << "' " << "Size: " << keysize.first << std::endl;
 		std::cout << "Content: " << std::endl;
 
 		for (unsigned i = 0; i < data.size(); ++i)
