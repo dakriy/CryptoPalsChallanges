@@ -16,7 +16,6 @@ unsigned __popcnt(const unsigned data)
 }
 #endif
 #define MAX_KEYSIZE 40
-#define SINGLE_CHAR_GUESS_NUM 3
 
 static const std::string base64_chars =
 "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -142,9 +141,7 @@ string_score break_single_character_xor(std::vector<char> data)
 	{
 		std::string decoded;
 		for (auto j : data)
-		{
 			decoded += static_cast<char>(j ^ i);
-		}
 		const string_score current_scored_str(decoded, i);
 		if (current_scored_str.score > top.score)
 			top = current_scored_str;
@@ -155,7 +152,7 @@ string_score break_single_character_xor(std::vector<char> data)
 // basically base^x
 unsigned intpow(const unsigned base, const unsigned x)
 {
-	unsigned retval = base;
+	auto retval = base;
 	if (x == 0)
 		return 1;
 	for (unsigned i = 0; i < x - 1; i++)
@@ -165,7 +162,7 @@ unsigned intpow(const unsigned base, const unsigned x)
 
 int main()
 {
-	std::ifstream f_h("6.txt", std::ifstream::in);
+	std::ifstream f_h("6.txt", std::ios::in);
 	std::string line;
 	std::vector<char> data;
 	while(std::getline(f_h, line))
@@ -178,8 +175,11 @@ int main()
 	// Second: Normalized hamming distance.
 	std::array<std::pair<unsigned, unsigned>, 3> keysizes = { std::make_pair(0, UINT_MAX), std::make_pair(0, UINT_MAX) , std::make_pair(0, UINT_MAX) };
 
-	for (auto i = 2; i < MAX_KEYSIZE; i++)
+	for (unsigned i = 2; i < MAX_KEYSIZE; i++)
 	{
+		// Key size larger than data doesn't make sense because then it wouldn't repeat.
+		if (data.size() < i)
+			continue;
 		const auto dist = compute_hamming_distance(&data[0], &data[i], i) / i;
 		for (auto& keysize : keysizes)
 		{
@@ -221,9 +221,7 @@ int main()
 		std::cout << "Content: " << std::endl;
 
 		for (unsigned i = 0; i < data.size(); ++i)
-		{
 			std::cout << decoded_blocks[i % decoded_blocks.size()].decoded_str[i / keysize.first];
-		}
 
 		std::cout << std::endl << std::endl;
 	}
